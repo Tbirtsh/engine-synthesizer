@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Multi-Engine Simulator</title>
+  <title>Synth Engine Sim</title>
   <style>
     body {
       background: #111;
@@ -11,25 +11,18 @@
       text-align: center;
       padding: 2em;
     }
-    select, button {
-      padding: 0.5em;
+    input, select, button {
       font-size: 1em;
-      margin: 1em;
-      background: #0f0;
-      color: #000;
-      border: none;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #6f6;
+      padding: 0.5em;
+      margin: 0.5em;
     }
   </style>
 </head>
 <body>
-  <h1>Engine Sound Synth - Sample Based</h1>
+  <h1>Synthetic Engine Simulator</h1>
 
   <div>
-    <label for="engineType">Engine Type:</label>
+    <label>Engine Type:</label>
     <select id="engineType">
       <option value="v8">V8</option>
       <option value="inline6">Inline-6</option>
@@ -39,82 +32,108 @@
   </div>
 
   <div>
-    <button onclick="playIdle()">Start Idle</button>
-    <button onclick="playRev()">Rev Engine</button>
-    <button onclick="stopAll()">Stop</button>
+    <label>RPM:</label>
+    <input type="range" id="rpmSlider" min="800" max="9000" value="1000" />
+    <span id="rpmDisplay">1000</span> RPM
   </div>
 
   <div>
-    <label><input type="checkbox" id="turboToggle" /> Enable Turbo</label>
+    <label>Displacement (L):</label>
+    <input type="range" id="dispSlider" min="0.8" max="8.0" step="0.1" value="2.0" />
+    <span id="dispDisplay">2.0</span>L
+  </div>
+
+  <div>
+    <label><input type="checkbox" id="turboToggle" /> Turbo</label>
+    <label><input type="checkbox" id="cammedToggle" /> Cammed Idle</label>
+  </div>
+
+  <div>
+    <button onclick="startEngine()">Start Engine</button>
+    <button onclick="stopEngine()">Stop</button>
   </div>
 
   <script>
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     const ctx = new AudioContext();
 
-    const sounds = {
-      v8: {
-        idle: 'https://cdn.pixabay.com/download/audio/2022/03/01/audio_1529bd6dc2.mp3?filename=v8-idle.mp3',
-        rev: 'https://cdn.pixabay.com/download/audio/2022/03/01/audio_3cfae9ef41.mp3?filename=v8-rev.mp3'
-      },
-      inline6: {
-        idle: 'https://cdn.pixabay.com/download/audio/2021/09/09/audio_d582b464e6.mp3?filename=engine-loop.mp3',
-        rev: 'https://cdn.pixabay.com/download/audio/2021/08/09/audio_841f3c4f20.mp3?filename=revving.mp3'
-      },
-      rotary: {
-        idle: 'https://cdn.pixabay.com/download/audio/2021/09/30/audio_6b771e79e0.mp3?filename=rotary-idle.mp3',
-        rev: 'https://cdn.pixabay.com/download/audio/2022/03/03/audio_d81e0b6a04.mp3?filename=rotary-rev.mp3'
-      },
-      bike: {
-        idle: 'https://cdn.pixabay.com/download/audio/2021/09/03/audio_3d9ed72ba4.mp3?filename=motorbike-idle.mp3',
-        rev: 'https://cdn.pixabay.com/download/audio/2021/09/03/audio_61ea490a80.mp3?filename=motorbike-rev.mp3'
-      },
-      turbo: 'https://cdn.pixabay.com/download/audio/2021/11/26/audio_61f8e6fd03.mp3?filename=turbo-boost.mp3'
-    };
+    let osc, gainNode, turboOsc, camLFO;
+    let running = false;
 
-    let sources = [];
+    const rpmSlider = document.getElementById('rpmSlider');
+    const rpmDisplay = document.getElementById('rpmDisplay');
+    const dispSlider = document.getElementById('dispSlider');
+    const dispDisplay = document.getElementById('dispDisplay');
 
-    async function loadSound(url) {
-      const response = await fetch(url);
-      const arrayBuffer = await response.arrayBuffer();
-      return await ctx.decodeAudioData(arrayBuffer);
-    }
+    rpmSlider.oninput = () => rpmDisplay.textContent = rpmSlider.value;
+    dispSlider.oninput = () => dispDisplay.textContent = dispSlider.value;
 
-    async function playSound(url, loop = false) {
-      const buffer = await loadSound(url);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.loop = loop;
-      source.connect(ctx.destination);
-      source.start();
-      sources.push(source);
-    }
+    function startEngine() {
+      if (running) return;
+      running = true;
 
-    async function playIdle() {
-      stopAll();
-      const engine = document.getElementById('engineType').value;
-      await playSound(sounds[engine].idle, true);
-    }
+      const engineType = document.getElementById('engineType').value;
+      const rpm = parseFloat(rpmSlider.value);
+      const disp = parseFloat(dispSlider.value);
+      const turbo = document.getElementById('turboToggle').checked;
+      const cammed = document.getElementById('cammedToggle').checked;
 
-    async function playRev() {
-      stopAll();
-      const engine = document.getElementById('engineType').value;
-      await playSound(sounds[engine].rev, false);
+      const cylinders = engineType === 'v8' ? 8 :
+                        engineType === 'inline6' ? 6 :
+                        engineType === 'rotary' ? 2 :
+                        1;
 
-      if (document.getElementById('turboToggle').checked) {
-        setTimeout(() => {
-          playSound(sounds.turbo, false);
-        }, 800); // Simulate turbo delay
+      const firingRate = (rpm / 60) * (cylinders / 2);
+
+      // Setup gain
+      gainNode = ctx.createGain();
+      gainNode.gain.value = Math.min(1, disp / 4);
+      
+      // Setup oscillator
+      osc = ctx.createOscillator();
+      osc.type = engineType === 'v8' ? 'square' :
+                 engineType === 'inline6' ? 'sawtooth' :
+                 engineType === 'rotary' ? 'triangle' : 'sine';
+
+      osc.frequency.setValueAtTime(firingRate, ctx.currentTime);
+      osc.connect(gainNode);
+
+      // Cammed idle?
+      if (cammed) {
+        camLFO = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        camLFO.type = 'triangle';
+        camLFO.frequency.setValueAtTime(1.5, ctx.currentTime);
+        lfoGain.gain.value = 0.3;
+        camLFO.connect(lfoGain);
+        lfoGain.connect(gainNode.gain);
+        camLFO.start();
       }
+
+      // Turbo whistle
+      if (turbo) {
+        turboOsc = ctx.createOscillator();
+        const tGain = ctx.createGain();
+        turboOsc.type = 'sine';
+        turboOsc.frequency.setValueAtTime(1000 + rpm / 10, ctx.currentTime);
+        tGain.gain.value = 0.08 + (rpm / 10000);
+        turboOsc.connect(tGain);
+        tGain.connect(ctx.destination);
+        turboOsc.start();
+      }
+
+      // Connect to output
+      gainNode.connect(ctx.destination);
+      osc.start();
     }
 
-    function stopAll() {
-      sources.forEach(src => {
-        try {
-          src.stop();
-        } catch (e) {}
-      });
-      sources = [];
+    function stopEngine() {
+      running = false;
+      try {
+        osc?.stop();
+        turboOsc?.stop();
+        camLFO?.stop();
+      } catch (e) {}
     }
   </script>
 </body>
