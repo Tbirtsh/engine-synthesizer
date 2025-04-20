@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Engine Sound Synth</title>
+  <style>
+    body {
+      font-family: monospace;
+      background-color: #111;
+      color: #0f0;
+      text-align: center;
+      padding: 2em;
+    }
+
+    h1 {
+      font-size: 2em;
+      margin-bottom: 0.5em;
+    }
+
+    .controls {
+      margin: 1.5em 0;
+    }
+
+    label {
+      display: block;
+      margin: 1em 0 0.2em;
+    }
+
+    input[type=range] {
+      width: 60%;
+    }
+
+    button {
+      background: #0f0;
+      color: #000;
+      padding: 0.6em 1.2em;
+      font-size: 1em;
+      border: none;
+      cursor: pointer;
+      margin-top: 1em;
+    }
+
+    button:hover {
+      background: #7f0;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Engine Synth v0.1</h1>
+
+  <div class="controls">
+    <label for="displacement">Displacement (Liters): <span id="dispVal">2.0</span>L</label>
+    <input type="range" id="displacement" min="0.8" max="8.0" step="0.1" value="2.0">
+
+    <label for="cylinders">Cylinders: <span id="cylVal">4</span></label>
+    <input type="range" id="cylinders" min="1" max="16" step="1" value="4">
+
+    <label for="rpm">RPM: <span id="rpmVal">1000</span></label>
+    <input type="range" id="rpm" min="800" max="9000" step="50" value="1000">
+
+    <button id="revBtn">Rev Engine</button>
+  </div>
+
+  <script>
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+
+    let engineOsc = null;
+    let gainNode = audioCtx.createGain();
+    gainNode.connect(audioCtx.destination);
+
+    const displacementInput = document.getElementById('displacement');
+    const cylindersInput = document.getElementById('cylinders');
+    const rpmInput = document.getElementById('rpm');
+
+    const dispVal = document.getElementById('dispVal');
+    const cylVal = document.getElementById('cylVal');
+    const rpmVal = document.getElementById('rpmVal');
+
+    displacementInput.oninput = () => dispVal.textContent = displacementInput.value;
+    cylindersInput.oninput = () => cylVal.textContent = cylindersInput.value;
+    rpmInput.oninput = () => rpmVal.textContent = rpmInput.value;
+
+    function playEngineSound() {
+      if (engineOsc) {
+        engineOsc.stop();
+        engineOsc.disconnect();
+      }
+
+      const baseRPM = parseFloat(rpmInput.value);
+      const cylinders = parseInt(cylindersInput.value);
+      const displacement = parseFloat(displacementInput.value);
+
+      const firingRate = (baseRPM / 60) * (cylinders / 2);
+      const baseFreq = firingRate;
+
+      engineOsc = audioCtx.createOscillator();
+      engineOsc.type = 'square'; // Dirty. Gritty. Realistic-ish.
+      engineOsc.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
+
+      // Engine volume scaling
+      const loudness = Math.min(1, displacement / 6);
+      gainNode.gain.setValueAtTime(loudness, audioCtx.currentTime);
+
+      engineOsc.connect(gainNode);
+      engineOsc.start();
+      engineOsc.stop(audioCtx.currentTime + 1.5); // short rev
+    }
+
+    document.getElementById('revBtn').addEventListener('click', () => {
+      // Mobile fix: resume audio context if needed
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      playEngineSound();
+    });
+  </script>
+
+</body>
+</html>
