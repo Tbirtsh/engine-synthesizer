@@ -2,258 +2,120 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Engine Synth v0.4 - SHIFT GOD EDITION</title>
+  <title>Multi-Engine Simulator</title>
   <style>
     body {
-      font-family: monospace;
-      background-color: #111;
+      background: #111;
       color: #0f0;
+      font-family: monospace;
       text-align: center;
       padding: 2em;
     }
-
-    h1 {
-      font-size: 2em;
-      margin-bottom: 0.5em;
-    }
-
-    .controls {
-      margin: 1.5em 0;
-    }
-
-    label, .status {
-      display: block;
-      margin: 0.8em 0 0.2em;
-    }
-
-    input[type=range] {
-      width: 60%;
-    }
-
-    button {
+    select, button {
+      padding: 0.5em;
+      font-size: 1em;
+      margin: 1em;
       background: #0f0;
       color: #000;
-      padding: 0.6em 1.2em;
-      font-size: 1em;
       border: none;
       cursor: pointer;
-      margin: 0.5em;
     }
-
     button:hover {
-      background: #7f0;
-    }
-
-    input[type=checkbox] {
-      transform: scale(1.5);
-      margin: 0.5em;
-    }
-
-    .gearDisplay {
-      font-size: 1.5em;
-      margin-top: 1em;
+      background: #6f6;
     }
   </style>
 </head>
 <body>
+  <h1>Engine Sound Synth - Sample Based</h1>
 
-  <h1>Engine Synth v0.4 - SHIFT GOD EDITION</h1>
+  <div>
+    <label for="engineType">Engine Type:</label>
+    <select id="engineType">
+      <option value="v8">V8</option>
+      <option value="inline6">Inline-6</option>
+      <option value="rotary">Rotary</option>
+      <option value="bike">Motorcycle</option>
+    </select>
+  </div>
 
-  <div class="controls">
-    <label for="displacement">Displacement (L): <span id="dispVal">2.0</span>L</label>
-    <input type="range" id="displacement" min="0.8" max="8.0" step="0.1" value="2.0">
+  <div>
+    <button onclick="playIdle()">Start Idle</button>
+    <button onclick="playRev()">Rev Engine</button>
+    <button onclick="stopAll()">Stop</button>
+  </div>
 
-    <label for="cylinders">Cylinders: <span id="cylVal">8</span></label>
-    <input type="range" id="cylinders" min="2" max="12" step="1" value="8">
-
-    <div>
-      <label><input type="checkbox" id="toggleCam"> Cammed Idle</label>
-      <label><input type="checkbox" id="toggleTurbo"> Turbo</label>
-    </div>
-
-    <div>
-      <button id="startDrive">Start Drive</button>
-      <button id="stopDrive">Stop</button>
-    </div>
-
-    <div class="gearDisplay" id="gearStatus">Gear: N</div>
-    <div class="gearDisplay" id="rpmStatus">RPM: 0</div>
+  <div>
+    <label><input type="checkbox" id="turboToggle" /> Enable Turbo</label>
   </div>
 
   <script>
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    const audioCtx = new AudioContext();
+    const ctx = new AudioContext();
 
-    let osc1, osc2, noise, turboWhistle, bov, gainNode, filter, camLFO;
-    let driving = false, currentGear = 0, currentRPM = 0, rpmTarget = 800;
-    const gears = [0, 2.66, 1.78, 1.30, 1.00, 0.80, 0.63];
-    const finalDrive = 3.73;
-    const redline = 6500;
-    const shiftUpRPM = 6000;
-    const shiftDownRPM = 2500;
+    const sounds = {
+      v8: {
+        idle: 'https://cdn.pixabay.com/download/audio/2022/03/01/audio_1529bd6dc2.mp3?filename=v8-idle.mp3',
+        rev: 'https://cdn.pixabay.com/download/audio/2022/03/01/audio_3cfae9ef41.mp3?filename=v8-rev.mp3'
+      },
+      inline6: {
+        idle: 'https://cdn.pixabay.com/download/audio/2021/09/09/audio_d582b464e6.mp3?filename=engine-loop.mp3',
+        rev: 'https://cdn.pixabay.com/download/audio/2021/08/09/audio_841f3c4f20.mp3?filename=revving.mp3'
+      },
+      rotary: {
+        idle: 'https://cdn.pixabay.com/download/audio/2021/09/30/audio_6b771e79e0.mp3?filename=rotary-idle.mp3',
+        rev: 'https://cdn.pixabay.com/download/audio/2022/03/03/audio_d81e0b6a04.mp3?filename=rotary-rev.mp3'
+      },
+      bike: {
+        idle: 'https://cdn.pixabay.com/download/audio/2021/09/03/audio_3d9ed72ba4.mp3?filename=motorbike-idle.mp3',
+        rev: 'https://cdn.pixabay.com/download/audio/2021/09/03/audio_61ea490a80.mp3?filename=motorbike-rev.mp3'
+      },
+      turbo: 'https://cdn.pixabay.com/download/audio/2021/11/26/audio_61f8e6fd03.mp3?filename=turbo-boost.mp3'
+    };
 
-    const dispInput = document.getElementById("displacement");
-    const cylInput = document.getElementById("cylinders");
-    const camToggle = document.getElementById("toggleCam");
-    const turboToggle = document.getElementById("toggleTurbo");
-    const gearStatus = document.getElementById("gearStatus");
-    const rpmStatus = document.getElementById("rpmStatus");
+    let sources = [];
 
-    function setupAudioChain() {
-      gainNode = audioCtx.createGain();
-      filter = audioCtx.createBiquadFilter();
-      filter.type = "lowpass";
-      filter.frequency.value = 1800;
-      gainNode.connect(filter);
-      filter.connect(audioCtx.destination);
+    async function loadSound(url) {
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      return await ctx.decodeAudioData(arrayBuffer);
     }
 
-    function createNoiseBuffer() {
-      const bufferSize = 2 * audioCtx.sampleRate;
-      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * 0.2;
-      }
-      return buffer;
-    }
-
-    function createWhistle(freq = 1000) {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      gain.gain.value = 0.1;
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      return { osc, gain };
-    }
-
-    function fireBOV() {
-      const buffer = createNoiseBuffer();
-      const source = audioCtx.createBufferSource();
-      const gain = audioCtx.createGain();
-      gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+    async function playSound(url, loop = false) {
+      const buffer = await loadSound(url);
+      const source = ctx.createBufferSource();
       source.buffer = buffer;
-      source.connect(gain);
-      gain.connect(audioCtx.destination);
+      source.loop = loop;
+      source.connect(ctx.destination);
       source.start();
+      sources.push(source);
     }
 
-    function startDrive() {
-      stopDrive();
-
-      setupAudioChain();
-      driving = true;
-      currentGear = 1;
-      currentRPM = 1000;
-
-      const displacement = parseFloat(dispInput.value);
-      const cylinders = parseInt(cylInput.value);
-
-      const baseFreq = (currentRPM / 60) * (cylinders / 2);
-      osc1 = audioCtx.createOscillator();
-      osc1.type = "sine";
-      osc1.frequency.setValueAtTime(baseFreq, audioCtx.currentTime);
-
-      osc2 = audioCtx.createOscillator();
-      osc2.type = "sawtooth";
-      osc2.frequency.setValueAtTime(baseFreq * 0.5, audioCtx.currentTime);
-
-      noise = audioCtx.createBufferSource();
-      noise.buffer = createNoiseBuffer();
-      noise.loop = true;
-
-      osc1.connect(gainNode);
-      osc2.connect(gainNode);
-      noise.connect(gainNode);
-
-      osc1.start();
-      osc2.start();
-      noise.start();
-
-      if (turboToggle.checked) {
-        turboWhistle = createWhistle();
-      }
-
-      if (camToggle.checked) {
-        camLFO = audioCtx.createOscillator();
-        const lfoGain = audioCtx.createGain();
-        camLFO.type = "triangle";
-        camLFO.frequency.setValueAtTime(1.5 + Math.random(), audioCtx.currentTime);
-        lfoGain.gain.value = 0.25;
-        camLFO.connect(lfoGain);
-        lfoGain.connect(gainNode.gain);
-        camLFO.start();
-      }
-
-      driveLoop(displacement, cylinders);
+    async function playIdle() {
+      stopAll();
+      const engine = document.getElementById('engineType').value;
+      await playSound(sounds[engine].idle, true);
     }
 
-    function driveLoop(displacement, cylinders) {
-      if (!driving) return;
+    async function playRev() {
+      stopAll();
+      const engine = document.getElementById('engineType').value;
+      await playSound(sounds[engine].rev, false);
 
-      const power = Math.min(1, displacement / 6);
-      rpmTarget += 150; // acceleration
-
-      // Shift logic
-      if (currentRPM >= shiftUpRPM && currentGear < 6) {
-        fireBOV();
-        currentGear++;
-        rpmTarget = (currentRPM * (gears[currentGear - 1] / gears[currentGear])) * 0.95; // downmatch
+      if (document.getElementById('turboToggle').checked) {
+        setTimeout(() => {
+          playSound(sounds.turbo, false);
+        }, 800); // Simulate turbo delay
       }
-
-      if (currentRPM <= shiftDownRPM && currentGear > 1) {
-        currentGear--;
-        rpmTarget = (currentRPM * (gears[currentGear + 1] / gears[currentGear])) * 1.1; // revmatch
-      }
-
-      currentRPM += (rpmTarget - currentRPM) * 0.1;
-
-      const freq = (currentRPM / 60) * (cylinders / 2);
-      osc1.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      osc2.frequency.setValueAtTime(freq * 0.5, audioCtx.currentTime);
-      gainNode.gain.setValueAtTime(power, audioCtx.currentTime);
-
-      if (turboToggle.checked && turboWhistle) {
-        turboWhistle.osc.frequency.setValueAtTime(800 + currentRPM / 10, audioCtx.currentTime);
-        turboWhistle.gain.gain.setValueAtTime(0.05 + currentRPM / 10000, audioCtx.currentTime);
-      }
-
-      gearStatus.textContent = `Gear: ${currentGear}`;
-      rpmStatus.textContent = `RPM: ${Math.floor(currentRPM)}`;
-
-      requestAnimationFrame(() => driveLoop(displacement, cylinders));
     }
 
-    function stopDrive() {
-      driving = false;
-      try {
-        osc1?.stop();
-        osc2?.stop();
-        noise?.stop();
-        camLFO?.stop();
-        turboWhistle?.osc?.stop();
-      } catch (e) {}
+    function stopAll() {
+      sources.forEach(src => {
+        try {
+          src.stop();
+        } catch (e) {}
+      });
+      sources = [];
     }
-
-    // Sliders update
-    dispInput.oninput = e => dispVal.textContent = e.target.value;
-    cylInput.oninput = e => cylVal.textContent = e.target.value;
-
-    // Buttons
-    document.getElementById("startDrive").addEventListener("click", () => {
-      if (audioCtx.state === "suspended") audioCtx.resume();
-      startDrive();
-    });
-
-    document.getElementById("stopDrive").addEventListener("click", () => {
-      stopDrive();
-      gearStatus.textContent = "Gear: N";
-      rpmStatus.textContent = "RPM: 0";
-    });
   </script>
 </body>
 </html>
