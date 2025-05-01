@@ -1,140 +1,127 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Synth Engine Sim</title>
+  <meta charset="UTF-8">
+  <title>Big Lots Staff Directory</title>
   <style>
     body {
-      background: #111;
-      color: #0f0;
-      font-family: monospace;
-      text-align: center;
-      padding: 2em;
+      font-family: Arial, sans-serif;
+      background: #f2f2f2;
+      margin: 0;
+      padding: 0;
     }
-    input, select, button {
+    header {
+      background: #d71920;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2.5em;
+      letter-spacing: 2px;
+    }
+    .container {
+      padding: 30px;
+      max-width: 800px;
+      margin: auto;
+      background: white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 20px;
       font-size: 1em;
-      padding: 0.5em;
-      margin: 0.5em;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    table th, table td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid #ddd;
+    }
+    table th {
+      background: #e8e8e8;
+    }
+    .footer {
+      text-align: center;
+      padding: 20px;
+      font-size: 0.9em;
+      color: #777;
     }
   </style>
 </head>
 <body>
-  <h1>Synthetic Engine Simulator</h1>
-
-  <div>
-    <label>Engine Type:</label>
-    <select id="engineType">
-      <option value="v8">V8</option>
-      <option value="inline6">Inline-6</option>
-      <option value="rotary">Rotary</option>
-      <option value="bike">Motorcycle</option>
-    </select>
+  <header>
+    <h1>BIG LOTS</h1>
+    <p>Employee Directory – Cuyahoga Falls Location</p>
+  </header>
+  <div class="container">
+    <input type="text" id="searchInput" placeholder="Search staff...">
+    <table id="staffTable">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Age</th>
+          <th>Location</th>
+          <th>Position</th>
+        </tr>
+      </thead>
+      <tbody id="staffBody">
+        <!-- Filled by JavaScript -->
+      </tbody>
+    </table>
   </div>
-
-  <div>
-    <label>RPM:</label>
-    <input type="range" id="rpmSlider" min="800" max="9000" value="1000" />
-    <span id="rpmDisplay">1000</span> RPM
-  </div>
-
-  <div>
-    <label>Displacement (L):</label>
-    <input type="range" id="dispSlider" min="0.8" max="8.0" step="0.1" value="2.0" />
-    <span id="dispDisplay">2.0</span>L
-  </div>
-
-  <div>
-    <label><input type="checkbox" id="turboToggle" /> Turbo</label>
-    <label><input type="checkbox" id="cammedToggle" /> Cammed Idle</label>
-  </div>
-
-  <div>
-    <button onclick="startEngine()">Start Engine</button>
-    <button onclick="stopEngine()">Stop</button>
+  <div class="footer">
+    © 2025 Big Lots Stores, Inc. All rights reserved.
   </div>
 
   <script>
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    const ctx = new AudioContext();
-
-    let osc, gainNode, turboOsc, camLFO;
-    let running = false;
-
-    const rpmSlider = document.getElementById('rpmSlider');
-    const rpmDisplay = document.getElementById('rpmDisplay');
-    const dispSlider = document.getElementById('dispSlider');
-    const dispDisplay = document.getElementById('dispDisplay');
-
-    rpmSlider.oninput = () => rpmDisplay.textContent = rpmSlider.value;
-    dispSlider.oninput = () => dispDisplay.textContent = dispSlider.value;
-
-    function startEngine() {
-      if (running) return;
-      running = true;
-
-      const engineType = document.getElementById('engineType').value;
-      const rpm = parseFloat(rpmSlider.value);
-      const disp = parseFloat(dispSlider.value);
-      const turbo = document.getElementById('turboToggle').checked;
-      const cammed = document.getElementById('cammedToggle').checked;
-
-      const cylinders = engineType === 'v8' ? 8 :
-                        engineType === 'inline6' ? 6 :
-                        engineType === 'rotary' ? 2 :
-                        1;
-
-      const firingRate = (rpm / 60) * (cylinders / 2);
-
-      // Setup gain
-      gainNode = ctx.createGain();
-      gainNode.gain.value = Math.min(1, disp / 4);
-      
-      // Setup oscillator
-      osc = ctx.createOscillator();
-      osc.type = engineType === 'v8' ? 'square' :
-                 engineType === 'inline6' ? 'sawtooth' :
-                 engineType === 'rotary' ? 'triangle' : 'sine';
-
-      osc.frequency.setValueAtTime(firingRate, ctx.currentTime);
-      osc.connect(gainNode);
-
-      // Cammed idle?
-      if (cammed) {
-        camLFO = ctx.createOscillator();
-        const lfoGain = ctx.createGain();
-        camLFO.type = 'triangle';
-        camLFO.frequency.setValueAtTime(1.5, ctx.currentTime);
-        lfoGain.gain.value = 0.3;
-        camLFO.connect(lfoGain);
-        lfoGain.connect(gainNode.gain);
-        camLFO.start();
+    const staff = [
+      {
+        name: "Parker Jorz",
+        age: "15",
+        location: "Cuyahoga Falls",
+        position: "Stock Associate"
       }
+    ];
 
-      // Turbo whistle
-      if (turbo) {
-        turboOsc = ctx.createOscillator();
-        const tGain = ctx.createGain();
-        turboOsc.type = 'sine';
-        turboOsc.frequency.setValueAtTime(1000 + rpm / 10, ctx.currentTime);
-        tGain.gain.value = 0.08 + (rpm / 10000);
-        turboOsc.connect(tGain);
-        tGain.connect(ctx.destination);
-        turboOsc.start();
+    const staffBody = document.getElementById("staffBody");
+
+    function displayStaff(filter = "") {
+      staffBody.innerHTML = "";
+      const query = filter.toLowerCase();
+      const results = staff.filter(s =>
+        s.name.toLowerCase().includes(query) ||
+        s.location.toLowerCase().includes(query) ||
+        s.position.toLowerCase().includes(query)
+      );
+      if (results.length === 0) {
+        staffBody.innerHTML = "<tr><td colspan='4'>No results found.</td></tr>";
+      } else {
+        results.forEach(s => {
+          const row = `<tr>
+            <td>${s.name}</td>
+            <td>${s.age}</td>
+            <td>${s.location}</td>
+            <td>${s.position}</td>
+          </tr>`;
+          staffBody.innerHTML += row;
+        });
       }
-
-      // Connect to output
-      gainNode.connect(ctx.destination);
-      osc.start();
     }
 
-    function stopEngine() {
-      running = false;
-      try {
-        osc?.stop();
-        turboOsc?.stop();
-        camLFO?.stop();
-      } catch (e) {}
-    }
+    document.getElementById("searchInput").addEventListener("input", e => {
+      displayStaff(e.target.value);
+    });
+
+    // Initial render
+    displayStaff();
   </script>
 </body>
 </html>
